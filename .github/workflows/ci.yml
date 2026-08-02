@@ -27,10 +27,6 @@ jobs:
       - name: Install package and test tooling
         run: |
           python -m pip install --upgrade pip
-          # During the rebrand rollout `argorix-guardrails` may not be on PyPI yet. Fall back to the
-          # sibling repository so this repo's CI does not depend on the release order.
-          pip install "argorix-guardrails>=0.2.0" \
-            || pip install "argorix-guardrails @ git+https://github.com/argorixlabs/argorix-python@main"
           python -m pip install -e . pytest
 
       - name: Run tests

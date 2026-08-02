@@ -1,12 +1,3 @@
-"""End-to-end example for the Argorix Agent Guardrails SDK.
-
-Run with:
-    ARGORIX_API_URL=https://api.argorix.com \
-    ARGORIX_APP_NUMBER=123456 \
-    ARGORIX_APP_API_KEY=ax_live_replace_me \
-    python example_usage.py
-"""
-
 import asyncio
 
 import argorix_agents
@@ -26,13 +17,14 @@ async def query_db(query: str, context: dict | None = None) -> str:
 
 
 async def main() -> None:
-    registration = argorix_agents.init(
+    argorix_agents.init(
         agent_name="support_bot",
         agent_description="Customer support assistant",
+        base_url="http://127.0.0.1:8001",
+        app_number=123456,
+        app_api_key="ga_live_replace_me",
         default_metadata={"environment": "local"},
     )
-    print("Agent registered:", registration.agent_name, "created:", registration.created)
-    print("Bound controls:", len(registration.controls))
 
     try:
         print(await chat("test"))
@@ -41,13 +33,6 @@ async def main() -> None:
         print(f"Blocked by {exc.control_name}: {exc.message}")
     except ControlSteerError as exc:
         print(f"Steered by {exc.control_name}: {exc.steering_message or exc.message}")
-
-    # Manual evaluation, without the decorator.
-    evaluation = argorix_agents.evaluate_step(
-        stage="pre",
-        step={"type": "llm", "name": "summary", "input": "Summarize ticket 42"},
-    )
-    print("Manual decision:", evaluation.overall_decision, "allowed:", evaluation.allowed)
 
 
 if __name__ == "__main__":

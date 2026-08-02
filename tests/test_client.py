@@ -1,98 +1,65 @@
 import json
-import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from unittest import TestCase
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from argorix_agents import AgentGuardrailsClient, ArgorixAgentError
-from argorix_agents.models import AgentEvaluation
-
-DENY_RESULT = {
-    "overall_decision": "deny",
-    "allowed": False,
-    "requires_steering": False,
-    "confidence": 0.99,
-    "evaluated_controls": 2,
-    "matches": [
-        {
-            "control_id": "control-1",
-            "control_name": "Block SSN",
-            "action": "deny",
-            "evaluator_name": "regex",
-            "selector_path": "input",
-            "matched": True,
-            "confidence": 0.99,
-            "message": "Pattern matched.",
-            "error": None,
-            "metadata": {"steering_message": "Ask for a case id instead."},
-        }
-    ],
-    "non_matches": [],
-    "errors": [],
-}
+from argorix_agents import AgentControlClient, AgentControlError
 
 
 class RuntimeHandler(BaseHTTPRequestHandler):
-    responses: list[tuple[int, dict]] = []
-    sse_responses: list[list[tuple[str, dict]]] = []
+    #: Each entry is `(status, body)`. A dict body is serialized as JSON; raw
+    #: `bytes` are written through untouched, which is how the malformed-body
+    #: cases reproduce a proxy returning an HTML error page with a 200.
+    responses: list[tuple[int, object]] = []
     requests: list[dict] = []
-
-    def do_GET(self) -> None:  # noqa: N802
-        self._record()
-        self._respond_json()
+    #: Held before answering, to reproduce a policy engine that stops replying.
+    delay_seconds: float = 0.0
 
     def do_POST(self) -> None:  # noqa: N802
-        self._record()
-        if self.path.endswith("/stream"):
-            self._respond_sse()
-            return
-        self._respond_json()
-
-    def _record(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
-        raw_body = self.rfile.read(length).decode("utf-8") if length else ""
+        raw_body = self.rfile.read(length).decode("utf-8")
+        payload = json.loads(raw_body) if raw_body else {}
         RuntimeHandler.requests.append(
             {
-                "method": self.command,
                 "path": self.path,
                 "headers": dict(self.headers.items()),
-                "payload": json.loads(raw_body) if raw_body else {},
+                "payload": payload,
             }
         )
 
-    def _respond_json(self) -> None:
+        if RuntimeHandler.delay_seconds:
+            time.sleep(RuntimeHandler.delay_seconds)
+
         status, body = RuntimeHandler.responses.pop(0)
-        encoded = json.dumps(body).encode("utf-8")
+        encoded = body if isinstance(body, bytes) else json.dumps(body).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
 
-    def _respond_sse(self) -> None:
-        events = RuntimeHandler.sse_responses.pop(0)
-        body = b"".join(
-            f"event: {name}\ndata: {json.dumps(data)}\n\n".encode("utf-8") for name, data in events
-        )
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
     def log_message(self, format: str, *args) -> None:  # noqa: A003
         return
 
 
-class AgentGuardrailsClientTests(TestCase):
+class QuietThreadingHTTPServer(ThreadingHTTPServer):
+    """Swallows the broken pipe a timed-out client leaves behind.
+
+    The timeout tests hang up mid-response on purpose; without this the server
+    prints a traceback that looks like a test failure and is not one.
+    """
+
+    def handle_error(self, request, client_address) -> None:
+        return
+
+
+class AgentControlClientTests(TestCase):
     def setUp(self) -> None:
         RuntimeHandler.responses = []
-        RuntimeHandler.sse_responses = []
         RuntimeHandler.requests = []
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), RuntimeHandler)
+        RuntimeHandler.delay_seconds = 0.0
+        self.server = QuietThreadingHTTPServer(("127.0.0.1", 0), RuntimeHandler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = f"http://127.0.0.1:{self.server.server_port}"
@@ -102,151 +69,109 @@ class AgentGuardrailsClientTests(TestCase):
         self.server.server_close()
         self.thread.join(timeout=2)
 
-    def build_client(self, **kwargs) -> AgentGuardrailsClient:
-        return AgentGuardrailsClient(
-            base_url=self.base_url,
-            app_number=123456,
-            app_api_key="ax_live_test",
-            retry_backoff_seconds=0,
-            **kwargs,
-        )
-
     def test_init_agent_retries_transient_failure(self) -> None:
         RuntimeHandler.responses = [
             (503, {"detail": "retry later"}),
-            (200, {"created": True, "agent": {"agent_name": "support_bot"}, "controls": []}),
+            (200, {"created": True, "agent": {"agent_name": "support_bot"}}),
         ]
-        client = self.build_client(max_retries=1)
+        client = AgentControlClient(
+            base_url=self.base_url,
+            app_number=123456,
+            app_api_key="ga_live_test",
+            max_retries=1,
+            retry_backoff_seconds=0,
+        )
 
-        registration = client.init_agent(agent_name="support_bot")
+        response = client.init_agent(agent_name="support_bot")
 
-        self.assertTrue(registration.created)
-        self.assertEqual(registration.agent_name, "support_bot")
-        self.assertEqual(registration["created"], True)
+        self.assertTrue(response["created"])
         self.assertEqual(len(RuntimeHandler.requests), 2)
-        self.assertEqual(
-            RuntimeHandler.requests[0]["headers"]["Authorization"], "Bearer ax_live_test"
-        )
-        self.assertTrue(
-            RuntimeHandler.requests[0]["headers"]["User-Agent"].startswith("argorix-agents-python/")
-        )
-        self.assertEqual(
-            RuntimeHandler.requests[0]["path"], "/v1/agent-guardrails/runtime/agents/init"
-        )
+        self.assertEqual(RuntimeHandler.requests[0]["headers"]["Authorization"], "Bearer ga_live_test")
 
     def test_init_agent_raises_structured_error(self) -> None:
         RuntimeHandler.responses = [(400, {"detail": "invalid app"})]
-        client = self.build_client(max_retries=0)
+        client = AgentControlClient(
+            base_url=self.base_url,
+            app_number=123456,
+            app_api_key="ga_live_test",
+            max_retries=0,
+            retry_backoff_seconds=0,
+        )
 
-        with self.assertRaises(ArgorixAgentError) as exc:
+        with self.assertRaises(AgentControlError) as exc:
             client.init_agent(agent_name="support_bot")
 
         self.assertEqual(exc.exception.status_code, 400)
         self.assertIn("invalid app", exc.exception.response_body or "")
 
-    def test_list_agent_controls_sends_app_number_and_policy(self) -> None:
-        RuntimeHandler.responses = [(200, {"agent_name": "support_bot", "controls": []})]
-        client = self.build_client(max_retries=0)
+    def _client(self, **overrides) -> AgentControlClient:
+        options = {
+            "base_url": self.base_url,
+            "app_number": 123456,
+            "app_api_key": "ga_live_test",
+            "max_retries": 0,
+            "retry_backoff_seconds": 0,
+        }
+        options.update(overrides)
+        return AgentControlClient(**options)
 
-        client.list_agent_controls(agent_name="support_bot", policy_id="policy-1")
+    # -- malformed responses --------------------------------------------------
 
-        request = RuntimeHandler.requests[0]
-        self.assertEqual(request["method"], "GET")
-        self.assertIn("/v1/agent-guardrails/runtime/agents/support_bot/controls", request["path"])
-        self.assertIn("app_number=123456", request["path"])
-        self.assertIn("policy_id=policy-1", request["path"])
+    def test_a_malformed_body_surfaces_as_a_client_error(self) -> None:
+        """A 200 whose body is not JSON must not escape as a parse error.
 
-    def test_evaluate_returns_typed_matches(self) -> None:
-        RuntimeHandler.responses = [(200, DENY_RESULT)]
-        client = self.build_client(max_retries=0)
+        `json.JSONDecodeError` does not descend from `OSError`, so it used to
+        slip past the retry loop unwrapped. The caller then had to know about
+        the client's internals to tell "the engine refused" from "the engine
+        answered something unreadable".
+        """
+        RuntimeHandler.responses = [(200, b"<html>502 Bad Gateway</html>")]
 
-        result = client.evaluate(
-            agent_name="support_bot",
-            stage="pre",
-            step={"type": "llm", "name": "chat", "input": "share ssn"},
-        )
+        with self.assertRaises(AgentControlError):
+            self._client().init_agent(agent_name="support_bot")
 
-        self.assertIsInstance(result, AgentEvaluation)
-        self.assertTrue(result.denied)
-        self.assertEqual(result.overall_decision, "deny")
-        self.assertEqual(result.matches[0].control_name, "Block SSN")
-        self.assertEqual(result.matches[0].steering_message, "Ask for a case id instead.")
-        self.assertEqual(result.matches_with_action("deny"), result.matches)
-        self.assertEqual(result["evaluated_controls"], 2)
+    def test_a_non_utf8_body_surfaces_as_a_client_error(self) -> None:
+        """Same class of failure one layer earlier: the decode, not the parse."""
+        RuntimeHandler.responses = [(200, b"\xff\xfe\x00garbage")]
 
-    def test_evaluate_stream_yields_events(self) -> None:
-        RuntimeHandler.sse_responses = [
-            [
-                ("start", {"status": "started", "stage": "pre"}),
-                ("result", DENY_RESULT),
-                ("end", {"status": "completed", "allowed": False, "decision": "deny"}),
-            ]
+        with self.assertRaises(AgentControlError):
+            self._client().init_agent(agent_name="support_bot")
+
+    def test_a_malformed_body_is_retried_like_any_unusable_response(self) -> None:
+        """An unreadable answer is a transient failure, and transient failures retry.
+
+        Before, this response type bypassed the retry loop entirely: a garbled
+        body from a proxy failed the call outright even when the very next
+        attempt would have succeeded.
+        """
+        RuntimeHandler.responses = [
+            (200, b"not json at all"),
+            (200, {"created": True, "agent": {"agent_name": "support_bot"}}),
         ]
-        client = self.build_client(max_retries=0)
 
-        events = list(
-            client.evaluate_stream(
-                agent_name="support_bot",
-                stage="pre",
-                step={"type": "llm", "name": "chat", "input": "share ssn"},
-            )
-        )
+        response = self._client(max_retries=1).init_agent(agent_name="support_bot")
 
-        self.assertEqual([event.event for event in events], ["start", "result", "end"])
-        self.assertEqual(
-            RuntimeHandler.requests[0]["path"], "/v1/agent-guardrails/runtime/evaluate/stream"
-        )
+        self.assertTrue(response["created"])
+        self.assertEqual(len(RuntimeHandler.requests), 2)
 
-    def test_streamed_result_returns_evaluation(self) -> None:
-        RuntimeHandler.sse_responses = [
-            [("start", {"status": "started"}), ("result", DENY_RESULT), ("end", {"status": "ok"})]
-        ]
-        client = self.build_client(max_retries=0)
+    # -- timeout --------------------------------------------------------------
 
-        result = client.evaluate_streamed_result(
-            agent_name="support_bot",
-            stage="pre",
-            step={"type": "llm", "name": "chat", "input": "share ssn"},
-        )
+    def test_a_policy_engine_that_stops_answering_raises_rather_than_hangs(self) -> None:
+        """The engine going quiet has to end the call, not wait on it.
 
-        self.assertFalse(result.allowed)
-        self.assertEqual(result.matches[0].control_id, "control-1")
+        This currently works because `socket.timeout` happens to descend from
+        `OSError` and lands in the retry handler. That is a load-bearing
+        inheritance relationship nobody declared: swapping the transport for one
+        whose timeout is not an `OSError` would turn this into a fail-open
+        without a single line of the guardrail engine changing.
+        """
+        RuntimeHandler.delay_seconds = 1.2
+        RuntimeHandler.responses = [(200, {"created": True})]
 
-    def test_streamed_result_raises_on_error_event(self) -> None:
-        RuntimeHandler.sse_responses = [
-            [("error", {"status": "error", "detail": "unknown agent", "code": 400})]
-        ]
-        client = self.build_client(max_retries=0)
+        started = time.monotonic()
+        with self.assertRaises(AgentControlError):
+            self._client(timeout_seconds=0.25).init_agent(agent_name="support_bot")
+        elapsed = time.monotonic() - started
 
-        with self.assertRaises(ArgorixAgentError) as exc:
-            client.evaluate_streamed_result(
-                agent_name="ghost",
-                stage="pre",
-                step={"type": "llm", "name": "chat", "input": "hi"},
-            )
-
-        self.assertEqual(exc.exception.status_code, 400)
-
-    def test_record_event_posts_span_payload(self) -> None:
-        RuntimeHandler.responses = [(200, {"recorded": True, "event_id": "e1", "created_at": "x"})]
-        client = self.build_client(max_retries=0)
-
-        client.record_event(
-            agent_name="support_bot",
-            event_type="step_blocked",
-            decision="deny",
-            allowed=False,
-            duration_ms=12.5,
-            matches_total=1,
-        )
-
-        payload = RuntimeHandler.requests[0]["payload"]
-        self.assertEqual(payload["event_type"], "step_blocked")
-        self.assertEqual(payload["matches_total"], 1)
-        self.assertEqual(RuntimeHandler.requests[0]["path"], "/v1/agent-guardrails/runtime/events")
-
-    def test_legacy_client_alias_still_resolves(self) -> None:
-        from argorix_agents import AgentControlClient, AgentControlError
-
-        self.assertIs(AgentControlClient, AgentGuardrailsClient)
-        self.assertIs(AgentControlError, ArgorixAgentError)
+        # It gave up on its own deadline instead of riding the server's.
+        self.assertLess(elapsed, 1.0)

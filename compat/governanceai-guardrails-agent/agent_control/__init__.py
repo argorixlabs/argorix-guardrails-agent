@@ -1,39 +1,32 @@
 """Deprecated compatibility shim. Install and import ``argorix_agents`` instead.
 
 ``agent_control`` is the pre-rebrand module of the Argorix Agent Guardrails SDK. This
-distribution contains no implementation of its own: it depends on
-``argorix-guardrails-agent`` and re-exports it, including the shared runtime ``state``,
-so ``agent_control.init()`` and ``@agent_control.control()`` keep working together.
+distribution has no implementation of its own: it depends on ``argorix-guardrails-agent``
+and re-exports it, including the shared runtime ``state``, so ``agent_control.init()`` and
+``@argorix_agents.control()`` still cooperate inside one process.
 """
 
 import warnings
 
 from argorix_agents import (  # noqa: F401
-    API_PREFIX,
-    DEFAULT_BASE_URL,
     AgentControlClient,
     AgentControlError,
-    AgentEvaluation,
     AgentGuardrailsClient,
-    AgentRegistration,
-    AgentRuntimeState,
     ArgorixAgentError,
-    ArgorixError,
-    ControlMatch,
+    ControlEscalationError,
     ControlSteerError,
     ControlViolationError,
-    SDK_VERSION,
-    StreamEvent,
+    __version__,
     clear_registered_steps,
     control,
     current_agent,
-    current_client,
-    evaluate_step,
+    get_approval,
     init,
     list_agent_controls,
     list_registered_steps,
     reset,
     state,
+    wait_for_approval,
 )
 
 warnings.warn(
@@ -44,36 +37,23 @@ warnings.warn(
     stacklevel=2,
 )
 
-AgentControlState = AgentRuntimeState
-
-__version__ = SDK_VERSION
-
 __all__ = [
-    "API_PREFIX",
-    "DEFAULT_BASE_URL",
     "AgentControlClient",
     "AgentControlError",
-    "AgentControlState",
-    "AgentEvaluation",
     "AgentGuardrailsClient",
-    "AgentRegistration",
-    "AgentRuntimeState",
     "ArgorixAgentError",
-    "ArgorixError",
-    "ControlMatch",
+    "ControlEscalationError",
     "ControlSteerError",
     "ControlViolationError",
-    "SDK_VERSION",
-    "StreamEvent",
+    "__version__",
     "clear_registered_steps",
     "control",
     "current_agent",
-    "current_client",
-    "evaluate_step",
+    "get_approval",
     "init",
     "list_agent_controls",
     "list_registered_steps",
     "reset",
     "state",
-    "__version__",
+    "wait_for_approval",
 ]

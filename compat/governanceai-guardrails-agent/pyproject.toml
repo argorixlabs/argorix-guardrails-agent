@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "governanceai-guardrails-agent"
-version = "0.2.0"
+version = "0.3.0"
 description = "Deprecated: renamed to argorix-guardrails-agent. Compatibility shim."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,7 +18,7 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
   "Operating System :: OS Independent",
 ]
-dependencies = ["argorix-guardrails-agent>=0.2.0"]
+dependencies = ["argorix-guardrails-agent>=0.3.0"]
 
 [project.urls]
 Homepage = "https://github.com/argorixlabs/argorix-guardrails-agent"
