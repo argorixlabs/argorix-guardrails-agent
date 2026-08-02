@@ -27,7 +27,7 @@
 
 ### Cambios de comportamiento
 
-- El transporte HTTP ahora vive en `argorix` (dependencia nueva `argorix>=0.2.0`), lo que
+- El transporte HTTP ahora vive en `argorix` (dependencia nueva `argorix-guardrails>=0.2.0`), lo que
   alinea reintentos, timeouts y manejo de errores entre ambos SDKs.
 - `init()` devuelve `AgentRegistration` y `client.evaluate()` devuelve `AgentEvaluation`
   en vez de `dict`; el acceso por clave se mantiene.

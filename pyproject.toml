@@ -25,7 +25,7 @@ classifiers = [
   "Topic :: Security",
   "Typing :: Typed",
 ]
-dependencies = ["argorix>=0.2.0"]
+dependencies = ["argorix-guardrails>=0.2.0"]
 
 [project.urls]
 Homepage = "https://argorix.com"
