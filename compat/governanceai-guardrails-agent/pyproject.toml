@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "governanceai-guardrails-agent"
+version = "0.2.0"
+description = "Deprecated: renamed to argorix-guardrails-agent. Compatibility shim."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Argorix" }]
+keywords = ["argorix", "governanceai", "deprecated", "agents", "guardrails"]
+classifiers = [
+  "Development Status :: 7 - Inactive",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Operating System :: OS Independent",
+]
+dependencies = ["argorix-guardrails-agent>=0.2.0"]
+
+[project.urls]
+Homepage = "https://github.com/argorixlabs/argorix-guardrails-agent"
+Repository = "https://github.com/argorixlabs/argorix-guardrails-agent"
+Issues = "https://github.com/argorixlabs/argorix-guardrails-agent/issues"
+Changelog = "https://github.com/argorixlabs/argorix-guardrails-agent/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["agent_control*"]

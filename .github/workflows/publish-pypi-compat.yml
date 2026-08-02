@@ -1,0 +1,43 @@
+name: Publish PyPI Compatibility Shim
+
+# Publishes the deprecated `governanceai-guardrails-agent` package from
+# compat/governanceai-guardrails-agent. Manual on purpose.
+#
+# Requires PyPI trusted publishing configured for this repository:
+#   PyPI > governanceai-guardrails-agent > Publishing > Add a new pending publisher
+#     owner: argorixlabs / repo: argorix-guardrails-agent
+#     workflow: publish-pypi-compat.yml / environment: pypi-compat
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi-compat
+      url: https://pypi.org/p/governanceai-guardrails-agent
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade build twine
+
+      - name: Build the shim
+        run: python -m build --outdir dist compat/governanceai-guardrails-agent
+
+      - name: Validate distributions
+        run: python -m twine check dist/*
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

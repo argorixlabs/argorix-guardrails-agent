@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "argorix-guardrails-agent"
+version = "0.2.0"
+description = "Official Argorix Agent Guardrails SDK for Python agents and tool execution"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Argorix" }]
+keywords = ["argorix", "ai", "sdk", "agents", "guardrails", "ai-governance"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: OS Independent",
+  "Topic :: Security",
+  "Typing :: Typed",
+]
+dependencies = ["argorix>=0.2.0"]
+
+[project.urls]
+Homepage = "https://argorix.com"
+Documentation = "https://github.com/argorixlabs/argorix-guardrails-agent#readme"
+Repository = "https://github.com/argorixlabs/argorix-guardrails-agent"
+Issues = "https://github.com/argorixlabs/argorix-guardrails-agent/issues"
+Changelog = "https://github.com/argorixlabs/argorix-guardrails-agent/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["argorix_agents*"]
+
+[tool.setuptools.package-data]
+argorix_agents = ["py.typed"]
